@@ -8,6 +8,7 @@ Scripts prontos pra rodar da raiz do projeto (com o venv ativo). Resultados fica
 | `02-relatorio.sh` | 🟡 Médio | editor (geração de conteúdo) | 2–4 min |
 | `03-navegador.sh` | 🔴 Avançado | browser_use (abre o Chromium) | 2–5 min |
 | `04-fetch-rapido.sh` | ⚡ Rápido | fetch_url (sem navegador) | ~2 min |
+| `05-multimodal.sh` | 👁️🎙️ Multimodal | transcribe_audio / describe_image | 1–2 min |
 
 > Prefira `fetch_url` pra ler páginas estáticas (mais rápido e conteúdo completo);
 > use `browser_use` só quando precisar clicar, preencher formulário ou fazer login.
