@@ -75,6 +75,24 @@ api_key = "mangaba"
 
 Modelos disponíveis em `GET /v1/models`; o gateway suporta function-calling (`tools`) e streaming (SSE). Exemplos para outros provedores (Anthropic, Azure, Google, Ollama) em `config/config.example-model-*.toml`.
 
+Pra trocar o modelo de uma execução sem editar o config (validado contra o gateway):
+
+```bash
+python main.py --model mangaba-pro --prompt "sua tarefa"
+```
+
+### Cobertura do Mangaba Gateway (100%)
+
+| Endpoint do gateway | Uso no Operator |
+|---|---|
+| `POST /v1/chat/completions` | Cérebro do agente — perfis `[llm]`, `[llm.fast]`, `[llm.vision]` |
+| `POST /api/v1/{slug}/image/describe` | Ferramenta `describe_image` |
+| `POST /api/v1/{slug}/audio/transcribe` | Ferramenta `transcribe_audio` (Whisper) |
+| `POST /api/v1/{slug}/audio/chat` | Ferramenta `audio_chat` (áudio → resposta em 1 chamada) |
+| `GET /v1/models` | Validação da flag `--model` |
+| `GET /api/v1/health` + `POST /api/v1/{slug}/load` | Pré-carga automática no boot |
+| `POST /api/v1/{slug}/text/chat` e `/text/generate` | Cobertos pelo `/v1/chat/completions` (superset com tools/streaming) |
+
 ## ▶️ Uso
 
 Agente principal:

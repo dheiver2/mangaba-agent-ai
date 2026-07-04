@@ -3,7 +3,7 @@ import asyncio
 
 from app.agent.mangaba import Mangaba
 from app.config import config
-from app.gateway import preload_default_model
+from app.gateway import list_models, preload_default_model
 from app.logger import logger
 
 
@@ -19,7 +19,22 @@ async def main():
         default=20,
         help="Maximum agent steps before stopping (default: 20)",
     )
+    parser.add_argument(
+        "--model",
+        type=str,
+        required=False,
+        help="Override do modelo padrão (ex.: mangaba-pro, mangaba-lite-q4)",
+    )
     args = parser.parse_args()
+
+    # Override de modelo validado contra o /v1/models do gateway
+    if args.model:
+        available = await list_models()
+        if available and args.model not in available:
+            logger.error(f"Modelo '{args.model}' indisponível. Opções: {', '.join(available)}")
+            return
+        config.llm["default"].model = args.model
+        logger.info(f"🔀 Modelo padrão desta execução: {args.model}")
 
     # Memória persistente do agente entre execuções
     (config.workspace_root / "memoria").mkdir(parents=True, exist_ok=True)

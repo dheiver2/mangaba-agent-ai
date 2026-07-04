@@ -8,6 +8,18 @@ from app.config import config
 from app.logger import logger
 
 
+async def list_models() -> list[str]:
+    """Lista os modelos disponíveis no gateway via /v1/models (vazio se falhar)."""
+    settings = config.llm["default"]
+    root = str(settings.base_url).rstrip("/").removesuffix("/v1")
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            data = (await client.get(f"{root}/v1/models")).json()
+        return [m["id"] for m in data.get("data", [])]
+    except Exception:
+        return []
+
+
 async def preload_default_model(max_wait: int = 300) -> None:
     """Dispara a carga do modelo padrão no gateway e aguarda ficar pronto.
 

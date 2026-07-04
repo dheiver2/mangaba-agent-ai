@@ -82,6 +82,74 @@ class DescribeImage(BaseTool):
         return ToolResult(output=f"Análise de {path.name}:\n\n{text}")
 
 
+class AudioChat(BaseTool):
+    name: str = "audio_chat"
+    description: str = (
+        "Ouve um arquivo de áudio local e RESPONDE ao que foi falado, em uma única "
+        "chamada (transcrição + resposta do modelo). Use quando o áudio contém uma "
+        "pergunta ou pedido a ser respondido diretamente (ex.: responder mensagem de "
+        "voz). Para apenas converter fala em texto, prefira transcribe_audio."
+    )
+    parameters: dict = {
+        "type": "object",
+        "properties": {
+            "audio_path": {
+                "type": "string",
+                "description": "Caminho do arquivo de áudio; relativo é resolvido contra o workspace",
+            },
+            "instructions": {
+                "type": "string",
+                "description": "Instrução de como responder (ex.: 'responda de forma breve e formal')",
+            },
+            "language": {
+                "type": "string",
+                "description": "Idioma falado no áudio, ex. 'pt' (padrão)",
+            },
+        },
+        "required": ["audio_path"],
+    }
+
+    async def execute(
+        self,
+        audio_path: str,
+        instructions: str = "Você é um assistente útil em português.",
+        language: str = "pt",
+        **kwargs,
+    ) -> ToolResult:
+        path = _resolve(audio_path)
+        if not path.is_file():
+            return ToolResult(error=f"Áudio não encontrado: {path}")
+
+        # usa o modelo padrão (já quente pela pré-carga) pra gerar a resposta
+        model = config.llm["default"].model
+        url = f"{_gateway_root()}/api/v1/{model}/audio/chat"
+        try:
+            async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+                resp = await client.post(
+                    url,
+                    files={"file": (path.name, path.read_bytes())},
+                    data={
+                        "language": language,
+                        "system_prompt": instructions,
+                        "max_new_tokens": 512,
+                    },
+                )
+                resp.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            return ToolResult(error=f"Gateway retornou HTTP {e.response.status_code}: {e.response.text[:300]}")
+        except Exception as e:
+            return ToolResult(error=f"Falha no audio_chat: {e}")
+
+        data = resp.json()
+        reply = re.sub(r"<think>.*?</think>", "", data.get("reply", ""), flags=re.DOTALL).strip()
+        return ToolResult(
+            output=(
+                f"Transcrição de {path.name}:\n{data.get('transcription', '')}\n\n"
+                f"Resposta:\n{reply}"
+            )
+        )
+
+
 class TranscribeAudio(BaseTool):
     name: str = "transcribe_audio"
     description: str = (
