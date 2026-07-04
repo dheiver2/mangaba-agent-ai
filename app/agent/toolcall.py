@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 from typing import Any, List, Optional, Union
 
 from pydantic import Field
@@ -8,7 +9,14 @@ from app.agent.react import ReActAgent
 from app.exceptions import TokenLimitExceeded
 from app.logger import logger
 from app.prompt.toolcall import NEXT_STEP_PROMPT, SYSTEM_PROMPT
-from app.schema import TOOL_CHOICE_TYPE, AgentState, Message, ToolCall, ToolChoice
+from app.schema import (
+    TOOL_CHOICE_TYPE,
+    AgentState,
+    Function,
+    Message,
+    ToolCall,
+    ToolChoice,
+)
 from app.tool import CreateChatCompletion, Terminate, ToolCollection
 
 
@@ -35,6 +43,55 @@ class ToolCallAgent(ReActAgent):
 
     max_steps: int = 30
     max_observe: Optional[Union[int, bool]] = None
+
+    def _recover_tool_calls_from_text(self, content: str) -> List[ToolCall]:
+        """Extrai chamadas escritas como texto, ex.: 'browser_use({"action": ...})'.
+
+        Modelos menores às vezes degradam e emitem a chamada no content em vez
+        de tool_calls estruturado; sem isso o passo é desperdiçado.
+        """
+        recovered: List[ToolCall] = []
+        for i, match in enumerate(re.finditer(r"(\w+)\s*\(\s*(?=\{)", content)):
+            name = match.group(1)
+            if name not in self.available_tools.tool_map:
+                continue
+            # varre a partir da '{' contando chaves, ignorando as internas a strings
+            start = match.end()
+            depth, in_string, escape = 0, False, False
+            end = None
+            for pos in range(start, len(content)):
+                ch = content[pos]
+                if in_string:
+                    if escape:
+                        escape = False
+                    elif ch == "\\":
+                        escape = True
+                    elif ch == '"':
+                        in_string = False
+                    continue
+                if ch == '"':
+                    in_string = True
+                elif ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0:
+                        end = pos + 1
+                        break
+            if end is None:
+                continue
+            args = content[start:end]
+            try:
+                json.loads(args)
+            except json.JSONDecodeError:
+                continue
+            recovered.append(
+                ToolCall(
+                    id=f"recovered_{self.current_step}_{i}",
+                    function=Function(name=name, arguments=args),
+                )
+            )
+        return recovered
 
     async def think(self) -> bool:
         """Process current state and decide next actions using tools"""
@@ -76,6 +133,16 @@ class ToolCallAgent(ReActAgent):
             response.tool_calls if response and response.tool_calls else []
         )
         content = response.content if response and response.content else ""
+
+        # Modelos menores às vezes escrevem a chamada como texto em vez de
+        # emitir tool_calls estruturado; recupera antes de desperdiçar o passo
+        if not tool_calls and content:
+            recovered = self._recover_tool_calls_from_text(content)
+            if recovered:
+                self.tool_calls = tool_calls = recovered
+                logger.info(
+                    f"♻️ Recuperado {len(recovered)} tool call(s) emitido(s) como texto"
+                )
 
         # Log response info
         logger.info(f"✨ {self.name}'s thoughts: {content}")

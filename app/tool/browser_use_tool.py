@@ -468,7 +468,8 @@ Page content:
 
                 # Utility actions
                 elif action == "wait":
-                    seconds_to_wait = seconds if seconds is not None else 3
+                    # int(): modelos às vezes passam seconds como string ("2")
+                    seconds_to_wait = int(seconds) if seconds is not None else 3
                     await asyncio.sleep(seconds_to_wait)
                     return ToolResult(output=f"Waited for {seconds_to_wait} seconds")
 
