@@ -9,10 +9,13 @@ from app.logger import logger
 from app.prompt.mangaba import NEXT_STEP_PROMPT, SYSTEM_PROMPT
 from app.tool import Terminate, ToolCollection
 from app.tool.ask_human import AskHuman
+from app.tool.bash import Bash
 from app.tool.browser_use_tool import BrowserUseTool
+from app.tool.fetch_url import FetchUrl
 from app.tool.mcp import MCPClients, MCPClientTool
 from app.tool.python_execute import PythonExecute
 from app.tool.str_replace_editor import StrReplaceEditor
+from app.tool.web_search import WebSearch
 
 
 class Mangaba(ToolCallAgent):
@@ -34,8 +37,11 @@ class Mangaba(ToolCallAgent):
     available_tools: ToolCollection = Field(
         default_factory=lambda: ToolCollection(
             PythonExecute(),
+            FetchUrl(),
+            WebSearch(),
             BrowserUseTool(),
             StrReplaceEditor(),
+            Bash(),
             AskHuman(),
             Terminate(),
         )

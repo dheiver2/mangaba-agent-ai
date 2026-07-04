@@ -127,6 +127,15 @@ class StrReplaceEditor(BaseTool):
         # Get the appropriate file operator
         operator = self._get_operator()
 
+        # Caminhos relativos são resolvidos contra o workspace — evita que o
+        # agente desperdice um passo corrigindo "workspace/x.md" p/ absoluto
+        if not Path(path).is_absolute():
+            rel = Path(path)
+            # "workspace/x.md" não deve virar workspace/workspace/x.md
+            if rel.parts and rel.parts[0] == config.workspace_root.name:
+                rel = Path(*rel.parts[1:]) if len(rel.parts) > 1 else Path(".")
+            path = str(config.workspace_root / rel)
+
         # Validate path and command combination
         await self.validate_path(command, Path(path), operator)
 
