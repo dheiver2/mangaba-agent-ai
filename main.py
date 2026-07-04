@@ -11,10 +11,16 @@ async def main():
     parser.add_argument(
         "--prompt", type=str, required=False, help="Input prompt for the agent"
     )
+    parser.add_argument(
+        "--max-steps",
+        type=int,
+        default=20,
+        help="Maximum agent steps before stopping (default: 20)",
+    )
     args = parser.parse_args()
 
     # Create and initialize Mangaba agent
-    agent = await Mangaba.create()
+    agent = await Mangaba.create(max_steps=args.max_steps)
     try:
         # Use command line prompt if provided, otherwise ask for input
         prompt = args.prompt if args.prompt else input("Enter your prompt: ")

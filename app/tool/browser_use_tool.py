@@ -390,7 +390,9 @@ Extraction goal: {goal}
 Page content:
 {content[:max_content_length]}
 """
-                    messages = [{"role": "system", "content": prompt}]
+                    # role "user": provedores OpenAI-compatíveis (incl. Mangaba
+                    # Gateway) exigem ao menos uma mensagem de usuário
+                    messages = [{"role": "user", "content": prompt}]
 
                     # Define extraction function schema
                     extraction_function = {
