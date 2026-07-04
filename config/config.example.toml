@@ -121,3 +121,14 @@ server_reference = "app.mcp.server" # default server module reference
 # Your can add additional agents into run-flow workflow to solve different-type tasks.
 [runflow]
 use_data_analysis_agent = false     # The Data Analysi Agent to solve various data analysis tasks
+
+# Canais de comunicação empresarial (opcionais)
+# [email]                              # habilita a ferramenta send_email
+# smtp_host = "smtp.gmail.com"
+# smtp_port = 587
+# username = "voce@empresa.com"
+# password = "senha-de-app"            # Gmail: senha de app, não a senha normal
+# from_addr = "voce@empresa.com"       # opcional (padrão: username)
+
+# [webhook]                            # habilita a ferramenta notify_webhook
+# url = "https://hooks.slack.com/..."  # Slack, gateway WhatsApp, n8n etc.

@@ -119,6 +119,29 @@ Digite sua tarefa no terminal e deixe o agente trabalhar. Também é possível p
 python main.py --prompt "pesquise os preços de fibra óptica em Alagoas e gere um relatório em Markdown"
 ```
 
+### 🏢 Uso empresarial: canais e operação
+
+**Canais** (configure as seções `[email]` e `[webhook]` no `config.toml` — exemplos no `config.example.toml`):
+- `read_pdf` — extrai texto e tabelas de contratos, notas fiscais, relatórios (sem config)
+- `send_email` — envia e-mail via SMTP; o agente é instruído a nunca enviar sem pedido explícito e destinatário definido pelo usuário
+- `notify_webhook` — notificação pra Slack, gateway de WhatsApp, n8n etc.
+
+**Fila de tarefas** (processamento em série — o gateway atende 1 inferência por vez):
+
+```bash
+python fila.py add "Gerar o relatório semanal em workspace/relatorio.xlsx"
+python fila.py list
+python fila.py run --max-steps 10            # processa tudo; aceita --model
+```
+
+**Agendamento** — combine a fila com cron (`crontab -e`):
+
+```cron
+# processa a fila toda hora / relatório toda segunda 8h
+0 * * * * cd ~/Downloads/Projetos/mangaba-operator && .venv/bin/python fila.py run >> workspace/fila/cron.log 2>&1
+0 8 * * 1 cd ~/Downloads/Projetos/mangaba-operator && .venv/bin/python fila.py add "Gerar relatório semanal em workspace/"
+```
+
 ### 🔗 Modo pipeline (tarefas grandes)
 
 Pra tarefas que não cabem numa execução só (janela de 8k do gateway), o pipeline divide em fases — **cada fase roda num agente novo com contexto zerado**, e os resultados passam entre fases pelos arquivos do workspace:
