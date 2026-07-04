@@ -19,7 +19,9 @@ daytona_config = DaytonaConfig(
     server_url=daytona_settings.daytona_server_url,
     target=daytona_settings.daytona_target,
 )
-daytona = Daytona(daytona_config)
+# Sem credenciais Daytona o import não pode falhar: o agente principal
+# funciona sem o sandbox remoto.
+daytona = Daytona(daytona_config) if daytona_config.api_key else None
 
 
 @dataclass

@@ -38,8 +38,12 @@ if daytona_config.target:
 else:
     logger.warning("No Daytona target found in environment variables")
 
-daytona = Daytona(daytona_config)
-logger.info("Daytona client initialized")
+# Cliente criado sob demanda: sem credenciais Daytona o import não pode falhar,
+# pois o agente principal funciona sem o sandbox remoto.
+daytona = None
+if daytona_config.api_key:
+    daytona = Daytona(daytona_config)
+    logger.info("Daytona client initialized")
 
 
 async def get_or_start_sandbox(sandbox_id: str):
