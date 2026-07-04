@@ -1,3 +1,3 @@
 """
-Mangaba AI benchmark system for standardized agent evaluation.
+Mangaba Operator benchmark system for standardized agent evaluation.
 """

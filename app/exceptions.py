@@ -6,7 +6,7 @@ class ToolError(Exception):
 
 
 class MangabaError(Exception):
-    """Base exception for all Mangaba AI errors"""
+    """Base exception for all Mangaba Operator errors"""
 
 
 class TokenLimitExceeded(MangabaError):

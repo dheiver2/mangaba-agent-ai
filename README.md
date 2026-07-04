@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="assets/logo.svg" width="220" alt="Mangaba AI"/>
+  <img src="assets/logo.svg" width="220" alt="Mangaba Operator"/>
 </p>
 
-<h1 align="center">🥭 Mangaba AI — Agente Autônomo</h1>
+<h1 align="center">🥭 Mangaba Operator</h1>
 
 <p align="center">
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/badge/Made%20in-Brasil-009c3b.svg" alt="Made in Brasil">
 </p>
 
-**Mangaba AI** é um agente de IA autônomo e versátil: você descreve a tarefa em linguagem natural e ele planeja, usa ferramentas (navegador, editor de arquivos, execução de Python, busca na web, MCP) e executa até concluir.
+**Mangaba Operator** é um agente de IA autônomo e versátil: você descreve a tarefa em linguagem natural e ele planeja, usa ferramentas (navegador, editor de arquivos, execução de Python, busca na web, MCP) e executa até concluir.
 
 ## ✨ Capacidades
 
@@ -26,8 +26,8 @@
 Requer **Python 3.12+**. Recomendamos [uv](https://docs.astral.sh/uv/):
 
 ```bash
-git clone https://github.com/dheiver2/mangaba-agent-ai.git
-cd mangaba-agent-ai
+git clone https://github.com/dheiver2/mangaba-operator.git
+cd mangaba-operator
 
 uv venv --python 3.12
 source .venv/bin/activate
@@ -93,7 +93,7 @@ Outras formas de execução:
 ```bash
 python run_mcp.py         # versão com ferramentas MCP
 python run_flow.py        # fluxo multi-agente (instável)
-python run_mcp_server.py  # sobe o servidor MCP do Mangaba AI
+python run_mcp_server.py  # sobe o servidor MCP do Mangaba Operator
 python sandbox_main.py    # agente em sandbox isolado
 ```
 

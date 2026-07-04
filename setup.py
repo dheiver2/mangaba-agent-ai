@@ -5,14 +5,14 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
-    name="mangaba-ai",
+    name="mangaba-operator",
     version="0.1.0",
     author="Mangaba AI Team",
     author_email="dheiver.santos@gmail.com",
-    description="Mangaba AI — agente de IA versátil que resolve tarefas usando múltiplas ferramentas",
+    description="Mangaba Operator — agente de IA versátil que resolve tarefas usando múltiplas ferramentas",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/dheiver2/mangaba-agent-ai",
+    url="https://github.com/dheiver2/mangaba-operator",
     packages=find_packages(),
     install_requires=[
         "pydantic~=2.10.4",

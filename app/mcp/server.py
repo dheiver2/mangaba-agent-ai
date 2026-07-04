@@ -156,13 +156,13 @@ class MCPServer:
         atexit.register(lambda: asyncio.run(self.cleanup()))
 
         # Start server (with same logging as original)
-        logger.info(f"Starting Mangaba AI server ({transport} mode)")
+        logger.info(f"Starting Mangaba Operator server ({transport} mode)")
         self.server.run(transport=transport)
 
 
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
-    parser = argparse.ArgumentParser(description="Mangaba AI MCP Server")
+    parser = argparse.ArgumentParser(description="Mangaba Operator MCP Server")
     parser.add_argument(
         "--transport",
         choices=["stdio"],
