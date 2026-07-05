@@ -26,6 +26,13 @@ async def main():
         help="Override do modelo padrão (ex.: mangaba-pro, mangaba-lite-q4)",
     )
     parser.add_argument(
+        "--perfil",
+        type=str,
+        default="completo",
+        choices=["completo", "rapido"],
+        help="'rapido' remove schemas pesados (navegador/mídia/canais) e acelera ~5-8s por passo",
+    )
+    parser.add_argument(
         "--verificar",
         action="store_true",
         help="Ciclo gerar→criticar→revisar: um revisor de contexto limpo valida os entregáveis e dispara 1 rodada de correção se reprovar",
@@ -54,12 +61,17 @@ async def main():
         from app.verificador import executar_com_verificacao
 
         logger.warning("Processing your request (com verificação)...")
-        aprovado, parecer = await executar_com_verificacao(prompt, max_steps=args.max_steps)
+        aprovado, parecer = await executar_com_verificacao(
+            prompt, max_steps=args.max_steps, perfil=args.perfil
+        )
         logger.info(f"Parecer final do revisor: {parecer[:500]}")
         return
 
     # Create and initialize Mangaba agent
     agent = await Mangaba.create(max_steps=args.max_steps)
+    from app.perfis import aplicar_perfil
+
+    aplicar_perfil(agent, args.perfil)
     try:
         logger.warning("Processing your request...")
         await agent.run(prompt)

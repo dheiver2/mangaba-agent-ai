@@ -59,7 +59,7 @@ async def _escalar(tarefa: str, prompt: str, motivo: str) -> None:
         logger.warning(f"Escalação registrada só em log (webhook indisponível): {r.error[:120]}")
 
 
-async def run(max_steps: int, model: str | None, verificar: bool = False) -> None:
+async def run(max_steps: int, model: str | None, verificar: bool = False, perfil: str = "completo") -> None:
     _dirs()
     # trava estrutural HITL: em modo autônomo, ações irreversíveis viram rascunho
     os.environ["MANGABA_AUTONOMO"] = "1"
@@ -81,13 +81,18 @@ async def run(max_steps: int, model: str | None, verificar: bool = False) -> Non
             if verificar:
                 from app.verificador import executar_com_verificacao
 
-                aprovado, parecer = await executar_com_verificacao(prompt, max_steps=max_steps)
+                aprovado, parecer = await executar_com_verificacao(
+                    prompt, max_steps=max_steps, perfil=perfil
+                )
                 if not aprovado:
                     tarefa.rename(FILA / "falhas" / tarefa.name)
                     await _escalar(tarefa.name, prompt, f"Reprovada pelo revisor: {parecer}")
                     continue
             else:
                 agent = await Mangaba.create(max_steps=max_steps)
+                from app.perfis import aplicar_perfil
+
+                aplicar_perfil(agent, perfil)
                 try:
                     await agent.run(prompt)
                 finally:
@@ -109,6 +114,7 @@ def main() -> None:
     p_run = sub.add_parser("run", help="Processa a fila em série")
     p_run.add_argument("--max-steps", type=int, default=10)
     p_run.add_argument("--model", type=str)
+    p_run.add_argument("--perfil", type=str, default="completo", choices=["completo", "rapido"])
     p_run.add_argument(
         "--verificar", action="store_true",
         help="Revisor valida cada tarefa; reprovadas são escaladas pro humano",
@@ -120,7 +126,7 @@ def main() -> None:
     elif args.cmd == "list":
         listar()
     else:
-        asyncio.run(run(args.max_steps, args.model, args.verificar))
+        asyncio.run(run(args.max_steps, args.model, args.verificar, args.perfil))
 
 
 if __name__ == "__main__":

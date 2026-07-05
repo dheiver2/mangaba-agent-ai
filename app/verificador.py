@@ -94,13 +94,15 @@ async def revisar(task: str, desde: float) -> tuple[bool, str]:
 
 
 async def executar_com_verificacao(
-    task: str, max_steps: int = 10, rodadas_correcao: int = 1
+    task: str, max_steps: int = 10, rodadas_correcao: int = 1, perfil: str = "completo"
 ) -> tuple[bool, str]:
     """Executa a tarefa, revisa e corrige até aprovar (ou esgotar as rodadas)."""
     from app.agent.mangaba import Mangaba
+    from app.perfis import aplicar_perfil
 
     inicio = time.time()
     agent = await Mangaba.create(max_steps=max_steps)
+    aplicar_perfil(agent, perfil)
     try:
         await agent.run(task)
     finally:
@@ -112,6 +114,7 @@ async def executar_com_verificacao(
         rodada += 1
         logger.warning(f"🔍 Revisor reprovou (rodada {rodada}): {parecer[:300]}")
         corretor = await Mangaba.create(max_steps=max_steps)
+        aplicar_perfil(corretor, perfil)
         try:
             await corretor.run(
                 "Uma tarefa foi executada mas o REVISOR apontou problemas. "
