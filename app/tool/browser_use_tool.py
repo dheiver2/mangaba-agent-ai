@@ -222,6 +222,20 @@ class BrowserUseTool(BaseTool, Generic[Context]):
         """
         async with self.lock:
             try:
+                # FIX: LLMs as vezes enviam indices como string ("28" em vez de 28)
+                def _to_int(value):
+                    if value is None:
+                        return None
+                    try:
+                        return int(value)
+                    except (TypeError, ValueError):
+                        return None
+
+                index = _to_int(index)
+                scroll_amount = _to_int(scroll_amount)
+                tab_id = _to_int(tab_id)
+                seconds = _to_int(seconds)
+
                 context = await self._ensure_browser_initialized()
 
                 # Get max content length from config
@@ -258,8 +272,24 @@ class BrowserUseTool(BaseTool, Generic[Context]):
                         query=query, fetch_content=True, num_results=1
                     )
                     # Navigate to the first search result
+                    # FIX: busca pode falhar e voltar vazia -> goto("") explode
+                    if not getattr(search_response, "results", None):
+                        return ToolResult(
+                            error=(
+                                f"Busca por '{query}' nao retornou resultados. "
+                                "Se o objetivo e o YouTube, use 'go_to_url' com "
+                                "https://www.youtube.com/results?search_query=SEU+TERMO"
+                            )
+                        )
                     first_search_result = search_response.results[0]
                     url_to_navigate = first_search_result.url
+                    if not url_to_navigate or not str(url_to_navigate).startswith("http"):
+                        return ToolResult(
+                            error=(
+                                f"Busca retornou URL invalida: {url_to_navigate!r}. "
+                                "Use 'go_to_url' com uma URL completa."
+                            )
+                        )
 
                     page = await context.get_current_page()
                     await page.goto(url_to_navigate)

@@ -1,3 +1,4 @@
+import time
 from abc import ABC, abstractmethod
 from contextlib import asynccontextmanager
 from typing import List, Optional
@@ -40,7 +41,7 @@ class BaseAgent(BaseModel, ABC):
     max_steps: int = Field(default=10, description="Maximum steps before termination")
     current_step: int = Field(default=0, description="Current step in execution")
 
-    duplicate_threshold: int = 2
+    duplicate_threshold: int = 1
 
     class Config:
         arbitrary_types_allowed = True
@@ -138,7 +139,13 @@ class BaseAgent(BaseModel, ABC):
             ):
                 self.current_step += 1
                 logger.info(f"Executing step {self.current_step}/{self.max_steps}")
+                step_start = time.monotonic()
                 step_result = await self.step()
+                step_elapsed = time.monotonic() - step_start
+                logger.info(
+                    f"Step {self.current_step} took {step_elapsed:.1f}s"
+                    + (" (LENTO: verifique latencia do modelo/gateway)" if step_elapsed > 20 else "")
+                )
 
                 # Check for stuck state
                 if self.is_stuck():
@@ -146,6 +153,10 @@ class BaseAgent(BaseModel, ABC):
 
                 results.append(f"Step {self.current_step}: {step_result}")
 
+            logger.info(
+                f"Total em {self.current_step} etapas "
+                f"(use os tempos por etapa acima para achar o gargalo)"
+            )
             if self.current_step >= self.max_steps:
                 self.current_step = 0
                 self.state = AgentState.IDLE
@@ -162,25 +173,42 @@ class BaseAgent(BaseModel, ABC):
 
     def handle_stuck_state(self):
         """Handle stuck state by adding a prompt to change strategy"""
-        stuck_prompt = "\
-        Observed duplicate responses. Consider new strategies and avoid repeating ineffective paths already attempted."
+        stuck_prompt = (
+            "ATENCAO: voce repetiu exatamente a mesma acao e ela FALHOU. "
+            "NAO repita a mesma acao. Antes de clicar em qualquer elemento, "
+            "obtenha o estado atual da pagina para ver os indices validos "
+            "(os indices mudam a cada navegacao). Se a busca falhar, navegue "
+            "diretamente via go_to_url com a URL completa."
+        )
         self.next_step_prompt = f"{stuck_prompt}\n{self.next_step_prompt}"
         logger.warning(f"Agent detected stuck state. Added prompt: {stuck_prompt}")
 
     def is_stuck(self) -> bool:
-        """Check if the agent is stuck in a loop by detecting duplicate content"""
+        """Detecta loop por conteudo OU tool calls repetidos (cobre thoughts vazio)."""
         if len(self.memory.messages) < 2:
             return False
 
-        last_message = self.memory.messages[-1]
-        if not last_message.content:
+        def _signature(msg):
+            tool_sig = ""
+            tool_calls = getattr(msg, "tool_calls", None)
+            if tool_calls:
+                tool_sig = "|".join(
+                    f"{tc.function.name}:{tc.function.arguments}"
+                    for tc in tool_calls
+                    if getattr(tc, "function", None)
+                )
+            return (msg.content or "") + "##" + tool_sig
+
+        assistant_msgs = [m for m in self.memory.messages if m.role == "assistant"]
+        if len(assistant_msgs) < 2:
             return False
 
-        # Count identical content occurrences
+        last_sig = _signature(assistant_msgs[-1])
+        if last_sig == "##":
+            return False
+
         duplicate_count = sum(
-            1
-            for msg in reversed(self.memory.messages[:-1])
-            if msg.role == "assistant" and msg.content == last_message.content
+            1 for msg in assistant_msgs[:-1] if _signature(msg) == last_sig
         )
 
         return duplicate_count >= self.duplicate_threshold
