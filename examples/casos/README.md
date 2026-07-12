@@ -9,6 +9,11 @@ Scripts prontos pra rodar da raiz do projeto (com o venv ativo). Resultados fica
 | `03-navegador.sh` | 🔴 Avançado | browser_use (abre o Chromium) | 2–5 min |
 | `04-fetch-rapido.sh` | ⚡ Rápido | fetch_url (sem navegador) | ~2 min |
 | `05-multimodal.sh` | 👁️🎙️ Multimodal | transcribe_audio / describe_image | 1–2 min |
+| `07-visual-query.sh` | 👁️ Híbrido | browser_use visual_query (visão da página) | 2–4 min |
+| `08-visual-click.sh` | 👁️ Híbrido | browser_use visual_click (clique por descrição) | 2–4 min |
+| `09-canvas-coordenadas.sh` | 🎯 Híbrido | click_coordinates em canvas (fora do DOM) | 2–4 min |
+| `10-mapa-drag.sh` | 🗺️ Híbrido | drag_coordinates (pan no OpenStreetMap) | 3–5 min |
+| `11-pagina-quebrada.sh` | 👁️ Híbrido | visual_query em página sem texto no DOM | 2–4 min |
 
 > Prefira `fetch_url` pra ler páginas estáticas (mais rápido e conteúdo completo);
 > use `browser_use` só quando precisar clicar, preencher formulário ou fazer login.
