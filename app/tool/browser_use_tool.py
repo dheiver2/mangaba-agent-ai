@@ -11,7 +11,7 @@ from pydantic import Field, field_validator
 from pydantic_core.core_schema import ValidationInfo
 
 from app.config import config
-from app.llm import LLM
+from app.llm import LLM, model_supports_images
 from app.tool.base import BaseTool, ToolResult
 from app.tool.web_search import WebSearch
 
@@ -29,8 +29,11 @@ Key capabilities include:
 * Scrolling: Scroll up/down by pixel amount or scroll to specific text
 * Content extraction: Extract and analyze content from web pages based on specific goals
 * Tab management: Switch between tabs, open new tabs, or close tabs
+* Coordinate interaction: Click or drag at raw (x, y) viewport coordinates — works on canvas, maps and pages whose elements are not in the DOM tree
+* Vision: 'visual_query' answers questions about the rendered page via screenshot; 'visual_click' locates an element described in natural language and clicks it (requires a multimodal model in the [llm.vision] profile)
 
 Note: When using element indices, refer to the numbered elements shown in the current browser state.
+Prefer DOM actions (click_element/input_text). Fall back to coordinate/vision actions only when the target is not in the interactive elements list (canvas, maps, custom widgets, broken pages).
 """
 
 Context = TypeVar("Context")
@@ -61,6 +64,10 @@ class BrowserUseTool(BaseTool, Generic[Context]):
                     "switch_tab",
                     "open_tab",
                     "close_tab",
+                    "click_coordinates",
+                    "drag_coordinates",
+                    "visual_query",
+                    "visual_click",
                 ],
                 "description": "The browser action to perform",
             },
@@ -90,7 +97,23 @@ class BrowserUseTool(BaseTool, Generic[Context]):
             },
             "goal": {
                 "type": "string",
-                "description": "Extraction goal for 'extract_content' action",
+                "description": "Extraction goal for 'extract_content', question for 'visual_query', or natural-language description of the target element for 'visual_click'",
+            },
+            "x": {
+                "type": "integer",
+                "description": "X viewport coordinate (CSS pixels) for 'click_coordinates' or drag start for 'drag_coordinates'",
+            },
+            "y": {
+                "type": "integer",
+                "description": "Y viewport coordinate (CSS pixels) for 'click_coordinates' or drag start for 'drag_coordinates'",
+            },
+            "x2": {
+                "type": "integer",
+                "description": "Drag end X coordinate for 'drag_coordinates'",
+            },
+            "y2": {
+                "type": "integer",
+                "description": "Drag end Y coordinate for 'drag_coordinates'",
             },
             "keys": {
                 "type": "string",
@@ -118,6 +141,10 @@ class BrowserUseTool(BaseTool, Generic[Context]):
             "web_search": ["query"],
             "wait": ["seconds"],
             "extract_content": ["goal"],
+            "click_coordinates": ["x", "y"],
+            "drag_coordinates": ["x", "y", "x2", "y2"],
+            "visual_query": ["goal"],
+            "visual_click": ["goal"],
         },
     }
 
@@ -199,6 +226,10 @@ class BrowserUseTool(BaseTool, Generic[Context]):
         goal: Optional[str] = None,
         keys: Optional[str] = None,
         seconds: Optional[int] = None,
+        x: Optional[int] = None,
+        y: Optional[int] = None,
+        x2: Optional[int] = None,
+        y2: Optional[int] = None,
         **kwargs,
     ) -> ToolResult:
         """
@@ -235,6 +266,10 @@ class BrowserUseTool(BaseTool, Generic[Context]):
                 scroll_amount = _to_int(scroll_amount)
                 tab_id = _to_int(tab_id)
                 seconds = _to_int(seconds)
+                x = _to_int(x)
+                y = _to_int(y)
+                x2 = _to_int(x2)
+                y2 = _to_int(y2)
 
                 context = await self._ensure_browser_initialized()
 
@@ -527,6 +562,133 @@ Page content:
                 elif action == "close_tab":
                     await context.close_current_tab()
                     return ToolResult(output="Closed current tab")
+
+                # Ações por coordenada — funcionam onde a árvore DOM não
+                # alcança (canvas, mapas, widgets custom, páginas quebradas)
+                elif action == "click_coordinates":
+                    if x is None or y is None:
+                        return ToolResult(
+                            error="x and y are required for 'click_coordinates' action"
+                        )
+                    page = await context.get_current_page()
+                    await page.mouse.click(x, y)
+                    await asyncio.sleep(0.5)
+                    return ToolResult(output=f"Clicked at coordinates ({x}, {y})")
+
+                elif action == "drag_coordinates":
+                    if None in (x, y, x2, y2):
+                        return ToolResult(
+                            error="x, y, x2 and y2 are required for 'drag_coordinates' action"
+                        )
+                    page = await context.get_current_page()
+                    await page.mouse.move(x, y)
+                    await page.mouse.down()
+                    # passos intermediários: mapas/sliders ignoram saltos únicos
+                    steps = 12
+                    for i in range(1, steps + 1):
+                        await page.mouse.move(
+                            x + (x2 - x) * i / steps, y + (y2 - y) * i / steps
+                        )
+                    await page.mouse.up()
+                    await asyncio.sleep(0.5)
+                    return ToolResult(
+                        output=f"Dragged from ({x}, {y}) to ({x2}, {y2})"
+                    )
+
+                # Ações visuais — screenshot do viewport interpretado pelo
+                # perfil [llm.vision] (exige modelo multimodal)
+                elif action in ("visual_query", "visual_click"):
+                    if not goal:
+                        return ToolResult(
+                            error=f"Goal is required for '{action}' action"
+                        )
+                    vision_llm = LLM(config_name="vision")
+                    if not model_supports_images(vision_llm.model):
+                        return ToolResult(
+                            error=(
+                                f"O perfil [llm.vision] aponta para '{vision_llm.model}', "
+                                "que não aceita imagens (a API DeepSeek é texto-puro). "
+                                "Use as ações DOM (click_element/input_text) ou "
+                                "click_coordinates; para habilitar visão, configure um "
+                                "modelo multimodal em [llm.vision] no config.toml."
+                            )
+                        )
+
+                    page = await context.get_current_page()
+                    viewport = page.viewport_size or {"width": 1280, "height": 720}
+                    # scale="css": imagem 1:1 com as coordenadas do mouse,
+                    # mesmo em telas retina
+                    screenshot = await page.screenshot(
+                        full_page=False,
+                        animations="disabled",
+                        type="jpeg",
+                        quality=70,
+                        scale="css",
+                    )
+                    image_b64 = base64.b64encode(screenshot).decode("utf-8")
+                    image_url = f"data:image/jpeg;base64,{image_b64}"
+
+                    if action == "visual_query":
+                        answer = await vision_llm.ask_with_images(
+                            [
+                                {
+                                    "role": "user",
+                                    "content": (
+                                        "Você vê um screenshot da janela visível de uma "
+                                        f"página web ({viewport['width']}x{viewport['height']} px). "
+                                        f"Responda de forma objetiva: {goal}"
+                                    ),
+                                }
+                            ],
+                            images=[image_url],
+                        )
+                        return ToolResult(output=f"Visual answer: {answer}")
+
+                    # visual_click: o modelo devolve as coordenadas do alvo
+                    answer = await vision_llm.ask_with_images(
+                        [
+                            {
+                                "role": "user",
+                                "content": (
+                                    "Você vê um screenshot da janela visível de uma página "
+                                    f"web com {viewport['width']}x{viewport['height']} pixels. "
+                                    f"Localize o seguinte elemento: \"{goal}\". "
+                                    "Responda SOMENTE com JSON no formato "
+                                    '{"found": true, "x": <int>, "y": <int>} usando o '
+                                    "centro do elemento em pixels da imagem, ou "
+                                    '{"found": false} se não estiver visível.'
+                                ),
+                            }
+                        ],
+                        images=[image_url],
+                    )
+                    import re
+
+                    match = re.search(r"\{[^{}]*\}", answer or "")
+                    if not match:
+                        return ToolResult(
+                            error=f"Vision model returned no coordinates: {answer!r}"
+                        )
+                    try:
+                        target = json.loads(match.group(0))
+                    except json.JSONDecodeError:
+                        return ToolResult(
+                            error=f"Vision model returned invalid JSON: {answer!r}"
+                        )
+                    if not target.get("found"):
+                        return ToolResult(
+                            output=(
+                                f"Element '{goal}' not visible in current viewport. "
+                                "Scroll or navigate before retrying visual_click."
+                            )
+                        )
+                    cx = max(0, min(int(target["x"]), viewport["width"] - 1))
+                    cy = max(0, min(int(target["y"]), viewport["height"] - 1))
+                    await page.mouse.click(cx, cy)
+                    await asyncio.sleep(0.5)
+                    return ToolResult(
+                        output=f"Visually located '{goal}' and clicked at ({cx}, {cy})"
+                    )
 
                 # Utility actions
                 elif action == "wait":

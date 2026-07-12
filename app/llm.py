@@ -42,6 +42,25 @@ MULTIMODAL_MODELS = [
     "claude-3-haiku-20240307",
 ]
 
+# Gateways OpenAI-compatíveis servem modelos de visão com nomes arbitrários
+# (mangaba-vision-q8, qwen2-vl, llava...) — detecta por substring além da lista
+MULTIMODAL_NAME_HINTS = (
+    "vision",
+    "-vl",
+    "vl-",
+    "llava",
+    "4o",
+    "gemini",
+    "claude",
+    "minicpm",
+    "pixtral",
+)
+
+
+def model_supports_images(model: str) -> bool:
+    m = model.lower()
+    return model in MULTIMODAL_MODELS or any(h in m for h in MULTIMODAL_NAME_HINTS)
+
 
 class TokenCounter:
     # Token constants
@@ -386,7 +405,7 @@ class LLM:
         """
         try:
             # Check if the model supports images
-            supports_images = self.model in MULTIMODAL_MODELS
+            supports_images = model_supports_images(self.model)
 
             # Format system and user messages with image support check
             if system_msgs:
@@ -516,9 +535,10 @@ class LLM:
         try:
             # For ask_with_images, we always set supports_images to True because
             # this method should only be called with models that support images
-            if self.model not in MULTIMODAL_MODELS:
+            if not model_supports_images(self.model):
                 raise ValueError(
-                    f"Model {self.model} does not support images. Use a model from {MULTIMODAL_MODELS}"
+                    f"Model {self.model} does not support images. "
+                    "Configure um modelo multimodal no perfil [llm.vision]."
                 )
 
             # Format messages with image support
@@ -681,7 +701,7 @@ class LLM:
                 raise ValueError(f"Invalid tool_choice: {tool_choice}")
 
             # Check if the model supports images
-            supports_images = self.model in MULTIMODAL_MODELS
+            supports_images = model_supports_images(self.model)
 
             # Format messages
             if system_msgs:
