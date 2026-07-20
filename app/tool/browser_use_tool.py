@@ -34,11 +34,17 @@ Key capabilities include:
 * Coordinate interaction: Click or drag at raw (x, y) viewport coordinates — works on canvas, maps and pages whose elements are not in the DOM tree
 * Vision: 'visual_query' answers questions about the rendered page via screenshot; 'visual_click' locates an element described in natural language and clicks it (requires a multimodal model in the [llm.vision] profile)
 * Rich interaction: hover over elements (reveal menus/tooltips), double click and right click by element index or coordinates
-* Forms & files: 'fill_form' fills several fields in one call; 'upload_file' attaches a local file to a file input
+* Forms & files: 'fill_form' fills several fields in one call; 'upload_file' attaches a local file to a file input; 'clear_input' empties a field
 * Synchronization: 'wait_for_text' blocks until a text appears on the page (dynamic/SPA content)
 * Scripting: 'execute_js' runs JavaScript in the page and returns its JSON result
 * Artifacts: 'screenshot_save' and 'save_page' persist a full-page screenshot / the page HTML to the workspace
 * Introspection: 'get_element_info' returns tag, attributes, value, text and bounding box of an element
+* Page survey: 'find_on_page' counts and locates a text with context; 'list_links' lists every link (text + URL)
+* Infinite feeds: 'scroll_to_bottom' keeps scrolling until the page stops growing
+* Session: 'get_cookies'/'set_cookies' export and restore login sessions between runs
+* Device emulation: 'set_viewport' resizes the viewport (mobile/tablet layouts)
+* Downloads: 'download_file' fetches a URL with the browser's cookies and saves it to the workspace
+* Dialogs: 'handle_dialog' arms auto accept/dismiss for alert/confirm/prompt popups
 
 Note: When using element indices, refer to the numbered elements shown in the current browser state.
 Prefer DOM actions (click_element/input_text). Fall back to coordinate/vision actions only when the target is not in the interactive elements list (canvas, maps, custom widgets, broken pages).
@@ -86,12 +92,22 @@ class BrowserUseTool(BaseTool, Generic[Context]):
                     "screenshot_save",
                     "save_page",
                     "get_element_info",
+                    "go_forward",
+                    "find_on_page",
+                    "list_links",
+                    "scroll_to_bottom",
+                    "clear_input",
+                    "get_cookies",
+                    "set_cookies",
+                    "set_viewport",
+                    "download_file",
+                    "handle_dialog",
                 ],
                 "description": "The browser action to perform",
             },
             "url": {
                 "type": "string",
-                "description": "URL for 'go_to_url' or 'open_tab' actions",
+                "description": "URL for 'go_to_url', 'open_tab' or 'download_file' actions",
             },
             "index": {
                 "type": "integer",
@@ -99,7 +115,7 @@ class BrowserUseTool(BaseTool, Generic[Context]):
             },
             "text": {
                 "type": "string",
-                "description": "Text for 'input_text', 'scroll_to_text', or 'select_dropdown_option' actions",
+                "description": "Text for 'input_text', 'scroll_to_text', 'select_dropdown_option', 'wait_for_text' or 'find_on_page'; JSON cookie list for 'set_cookies'; 'accept'/'dismiss' for 'handle_dialog'",
             },
             "scroll_amount": {
                 "type": "integer",
@@ -119,11 +135,11 @@ class BrowserUseTool(BaseTool, Generic[Context]):
             },
             "x": {
                 "type": "integer",
-                "description": "X viewport coordinate (CSS pixels) for 'click_coordinates' or drag start for 'drag_coordinates'",
+                "description": "X viewport coordinate (CSS pixels) for 'click_coordinates'/'drag_coordinates', or viewport WIDTH for 'set_viewport'",
             },
             "y": {
                 "type": "integer",
-                "description": "Y viewport coordinate (CSS pixels) for 'click_coordinates' or drag start for 'drag_coordinates'",
+                "description": "Y viewport coordinate (CSS pixels) for 'click_coordinates'/'drag_coordinates', or viewport HEIGHT for 'set_viewport'",
             },
             "x2": {
                 "type": "integer",
@@ -143,7 +159,7 @@ class BrowserUseTool(BaseTool, Generic[Context]):
             },
             "path": {
                 "type": "string",
-                "description": "File path for 'upload_file' (local file to attach), 'screenshot_save' or 'save_page' (destination; relative paths land in the workspace; optional for the last two)",
+                "description": "File path for 'upload_file' (local file to attach), 'screenshot_save', 'save_page' or 'download_file' (destination; relative paths land in the workspace; optional except for upload_file)",
             },
             "script": {
                 "type": "string",
@@ -193,6 +209,16 @@ class BrowserUseTool(BaseTool, Generic[Context]):
             "screenshot_save": [],
             "save_page": [],
             "get_element_info": ["index"],
+            "go_forward": [],
+            "find_on_page": ["text"],
+            "list_links": [],
+            "scroll_to_bottom": [],
+            "clear_input": ["index"],
+            "get_cookies": [],
+            "set_cookies": ["text"],
+            "set_viewport": ["x", "y"],
+            "download_file": ["url"],
+            "handle_dialog": [],
         },
     }
 
@@ -204,6 +230,9 @@ class BrowserUseTool(BaseTool, Generic[Context]):
 
     # Context for generic functionality
     tool_context: Optional[Context] = Field(default=None, exclude=True)
+
+    # handler ativo de handle_dialog (removido/trocado a cada chamada)
+    dialog_handler: Optional[object] = Field(default=None, exclude=True)
 
     llm: Optional[LLM] = Field(default_factory=LLM)
 
@@ -944,6 +973,221 @@ Page content:
                         )
                     return ToolResult(
                         output=f"Element info: {json.dumps(info, ensure_ascii=False)}"
+                    )
+
+                elif action == "go_forward":
+                    page = await context.get_current_page()
+                    # go_back do browser_use retorna antes da navegação
+                    # completar; um forward imediato acha o histórico em
+                    # trânsito e o Playwright devolve None sem erro — retry
+                    resp = None
+                    for _ in range(3):
+                        try:
+                            resp = await page.go_forward(
+                                timeout=3000, wait_until="domcontentloaded"
+                            )
+                        except Exception:
+                            resp = None
+                        if resp is not None:
+                            break
+                        await asyncio.sleep(0.5)
+                    if resp is None:
+                        return ToolResult(
+                            output=(
+                                f"Could not go forward (no forward history). "
+                                f"Still at {page.url}"
+                            )
+                        )
+                    return ToolResult(output=f"Navigated forward to {page.url}")
+
+                elif action == "find_on_page":
+                    if not text:
+                        return ToolResult(
+                            error="Text is required for 'find_on_page' action"
+                        )
+                    page = await context.get_current_page()
+                    hits = await page.evaluate(
+                        """
+                        (needle) => {
+                            const body = document.body.innerText || '';
+                            const low = body.toLowerCase();
+                            const n = needle.toLowerCase();
+                            const out = [];
+                            let i = low.indexOf(n);
+                            while (i !== -1 && out.length < 10) {
+                                out.push(body.slice(Math.max(0, i - 60), i + n.length + 60)
+                                             .replace(/\\s+/g, ' ').trim());
+                                i = low.indexOf(n, i + n.length);
+                            }
+                            let total = 0; i = low.indexOf(n);
+                            while (i !== -1) { total++; i = low.indexOf(n, i + n.length); }
+                            return {total, samples: out};
+                        }
+                    """,
+                        text,
+                    )
+                    if not hits["total"]:
+                        return ToolResult(
+                            output=f"'{text}' not found in the visible page text"
+                        )
+                    samples = "\n".join(f"  …{s}…" for s in hits["samples"])
+                    return ToolResult(
+                        output=(
+                            f"Found {hits['total']} occurrence(s) of '{text}':\n{samples}"
+                        )
+                    )
+
+                elif action == "list_links":
+                    page = await context.get_current_page()
+                    links = await page.evaluate(
+                        """
+                        () => Array.from(document.querySelectorAll('a[href]'))
+                            .map(a => ({text: (a.innerText || '').trim().slice(0, 80),
+                                        href: a.href}))
+                            .filter(l => l.href.startsWith('http'))
+                    """
+                    )
+                    # dedup preservando ordem
+                    seen, uniq = set(), []
+                    for l in links:
+                        if l["href"] not in seen:
+                            seen.add(l["href"])
+                            uniq.append(l)
+                    shown = uniq[:60]
+                    lines = "\n".join(
+                        f"  [{l['text'] or '(sem texto)'}] {l['href']}" for l in shown
+                    )
+                    extra = f" (+{len(uniq) - 60} omitted)" if len(uniq) > 60 else ""
+                    return ToolResult(
+                        output=f"{len(uniq)} unique link(s){extra}:\n{lines}"
+                    )
+
+                elif action == "scroll_to_bottom":
+                    page = await context.get_current_page()
+                    last = -1
+                    rounds = 0
+                    while rounds < 20:
+                        height = await page.evaluate(
+                            "window.scrollTo(0, document.body.scrollHeight);"
+                            "document.body.scrollHeight"
+                        )
+                        if height == last:
+                            break
+                        last = height
+                        rounds += 1
+                        await asyncio.sleep(1.0)  # dá tempo do feed carregar
+                    return ToolResult(
+                        output=(
+                            f"Reached the bottom after {rounds} scroll round(s); "
+                            f"final page height {last}px"
+                        )
+                    )
+
+                elif action == "clear_input":
+                    if index is None:
+                        return ToolResult(
+                            error="Index is required for 'clear_input' action"
+                        )
+                    element = await context.get_dom_element_by_index(index)
+                    if not element:
+                        return ToolResult(error=f"Element with index {index} not found")
+                    page = await context.get_current_page()
+                    await page.fill(f"xpath={element.xpath}", "")
+                    return ToolResult(output=f"Cleared input at index {index}")
+
+                # Sessão — exporta/restaura cookies (login entre execuções)
+                elif action == "get_cookies":
+                    page = await context.get_current_page()
+                    cookies = await page.context.cookies()
+                    slim = [
+                        {k: c.get(k) for k in ("name", "value", "domain", "path")}
+                        for c in cookies
+                    ]
+                    return ToolResult(
+                        output=f"{len(slim)} cookie(s): {json.dumps(slim, ensure_ascii=False)[:max_content_length]}"
+                    )
+
+                elif action == "set_cookies":
+                    if not text:
+                        return ToolResult(
+                            error=(
+                                "'set_cookies' requires 'text' with a JSON list like "
+                                '[{"name": "...", "value": "...", "url": "https://site.com"}]'
+                            )
+                        )
+                    try:
+                        cookie_list = json.loads(text)
+                        assert isinstance(cookie_list, list)
+                    except (json.JSONDecodeError, AssertionError):
+                        return ToolResult(
+                            error="'text' must be a JSON LIST of cookie objects"
+                        )
+                    page = await context.get_current_page()
+                    await page.context.add_cookies(cookie_list)
+                    return ToolResult(output=f"Set {len(cookie_list)} cookie(s)")
+
+                elif action == "set_viewport":
+                    if x is None or y is None:
+                        return ToolResult(
+                            error="'set_viewport' requires x (width) and y (height)"
+                        )
+                    if not (200 <= x <= 3840 and 200 <= y <= 2160):
+                        return ToolResult(
+                            error="Viewport must be between 200x200 and 3840x2160"
+                        )
+                    page = await context.get_current_page()
+                    await page.set_viewport_size({"width": x, "height": y})
+                    return ToolResult(output=f"Viewport set to {x}x{y}")
+
+                elif action == "download_file":
+                    if not url:
+                        return ToolResult(
+                            error="URL is required for 'download_file' action"
+                        )
+                    page = await context.get_current_page()
+                    # request context do navegador: leva os cookies da sessão
+                    resp = await page.context.request.get(url)
+                    if resp.status >= 400:
+                        return ToolResult(
+                            error=f"Download failed: HTTP {resp.status} for {url}"
+                        )
+                    body = await resp.body()
+                    name = path or url.split("?")[0].rstrip("/").split("/")[-1] or "download.bin"
+                    dest = name if os.path.isabs(name) else str(config.workspace_root / name)
+                    os.makedirs(os.path.dirname(dest) or ".", exist_ok=True)
+                    with open(dest, "wb") as fh:
+                        fh.write(body)
+                    ctype = resp.headers.get("content-type", "?")
+                    return ToolResult(
+                        output=f"Downloaded {len(body)} bytes ({ctype}) from {url} to {dest}"
+                    )
+
+                elif action == "handle_dialog":
+                    mode = (text or "accept").strip().lower()
+                    if mode not in ("accept", "dismiss"):
+                        return ToolResult(
+                            error="'handle_dialog' accepts text='accept' or 'dismiss'"
+                        )
+                    page = await context.get_current_page()
+                    if self.dialog_handler is not None:
+                        try:
+                            page.remove_listener("dialog", self.dialog_handler)
+                        except Exception:
+                            pass
+
+                    async def _on_dialog(dialog):
+                        try:
+                            if mode == "accept":
+                                await dialog.accept()
+                            else:
+                                await dialog.dismiss()
+                        except Exception:
+                            pass
+
+                    page.on("dialog", _on_dialog)
+                    self.dialog_handler = _on_dialog
+                    return ToolResult(
+                        output=f"Armed: future alert/confirm/prompt dialogs will be auto-{mode}ed"
                     )
 
                 # Utility actions

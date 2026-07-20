@@ -8,16 +8,26 @@ from app.config import config
 from app.logger import logger
 from app.prompt.mangaba import NEXT_STEP_PROMPT, SYSTEM_PROMPT
 from app.tool import Terminate, ToolCollection
+from app.tool.agendar import ScheduleTask
+from app.tool.arquivos import Archive
 from app.tool.ask_human import AskHuman
 from app.tool.bash import Bash
 from app.tool.browser_use_tool import BrowserUseTool
+from app.tool.clipboard import Clipboard
 from app.tool.fetch_url import FetchUrl
 from app.tool.comms import NotifyWebhook, SendEmail
 from app.tool.gateway_media import AudioChat, DescribeImage, TranscribeAudio
+from app.tool.http_client import HttpRequest
+from app.tool.image_edit import ImageEdit
+from app.tool.local_server import LocalServer
+from app.tool.read_office import ReadOffice
 from app.tool.read_pdf import ReadPdf
 from app.tool.mcp import MCPClients, MCPClientTool
 from app.tool.python_execute import PythonExecute
+from app.tool.sqlite_query import SqliteQuery
 from app.tool.str_replace_editor import StrReplaceEditor
+from app.tool.text_to_pdf import TextToPdf
+from app.tool.text_to_speech import TextToSpeech
 from app.tool.web_search import WebSearch
 
 
@@ -43,10 +53,20 @@ class Mangaba(ToolCallAgent):
             FetchUrl(),
             WebSearch(),
             BrowserUseTool(),
+            HttpRequest(),
             DescribeImage(),
             TranscribeAudio(),
             AudioChat(),
             ReadPdf(),
+            ReadOffice(),
+            TextToPdf(),
+            TextToSpeech(),
+            ImageEdit(),
+            Archive(),
+            SqliteQuery(),
+            LocalServer(),
+            Clipboard(),
+            ScheduleTask(),
             SendEmail(),
             NotifyWebhook(),
             StrReplaceEditor(),
